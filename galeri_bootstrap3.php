@@ -7,70 +7,37 @@ if (isset($_POST['submit']) && isset($_FILES['gambar'])) {
   $filename = $file['name'];
   $tempname = $file['tmp_name'];
 
-  $allowed_types = ['image/jpeg', 'image/png', 'image/jpg'];
-  $max_size = 1 * 1024 * 1024; // 1MB
+  // Validasi ukuran dan tipe file
+  $max_size = 1 * 1024 * 1024; // 1 MB
+  $allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
 
-  $mime = mime_content_type($tempname);
-  $filesize = filesize($tempname);
+  if ($file['size'] > $max_size) {
+    echo "Ukuran file terlalu besar. Maksimum 1 MB.";
+    exit;
+  }
 
-  // Validasi tipe dan ukuran file
+  $finfo = finfo_open(FILEINFO_MIME_TYPE);
+  $mime = finfo_file($finfo, $_FILES['gambar']['tmp_name']);
   if (!in_array($mime, $allowed_types)) {
-    die("Hanya file JPG, JPEG, dan PNG yang diperbolehkan.");
+    echo "Tipe MIME tidak sesuai. Hanya gambar JPG, PNG, dan GIF yang diperbolehkan.";
+    exit;
   }
 
-  if ($filesize > $max_size) {
-    die("Ukuran file maksimal 1MB.");
-  }
+  // Mengubah nama file menjadi id_pengguna_timestamp.jpg
+  $timestamp = time();
+  $folder = "uploads/" . uniqid() . "_{$timestamp}_" . basename($filename);
+  $thumb = "thumbnails/" . uniqid() . "_thumb_{$timestamp}_" . basename($filename);
 
-  // Ubah nama file menjadi id_pengguna_timestamp.jpg
-  $user_id = 123;  // Sesuaikan dengan ID pengguna yang relevan
-  $new_filename = $user_id . "_" . time() . ".jpg";
-
-  $folder = "profile_pics/" . $new_filename;
-  $thumb = "thumbnails/" . uniqid() . "_thumb_" . basename($new_filename);
-
-  // Membuat folder thumbnails jika belum ada
   if (!is_dir('thumbnails')) {
     mkdir('thumbnails', 0777, true);
   }
 
-  // Fungsi resize gambar
-  function resizeImage($source, $destination, $new_width = 300)
-  {
-    list($width, $height) = getimagesize($source);
-    $ratio = $height / $width;
-    $new_height = $new_width * $ratio;
-
-    $image_ext = pathinfo($source, PATHINFO_EXTENSION);
-    if ($image_ext == 'jpg' || $image_ext == 'jpeg') {
-      $src_img = imagecreatefromjpeg($source);
-    } elseif ($image_ext == 'png') {
-      $src_img = imagecreatefrompng($source);
-    } else {
-      return false;
-    }
-
-    $dst_img = imagecreatetruecolor($new_width, $new_height);
-    imagecopyresampled($dst_img, $src_img, 0, 0, 0, 0, $new_width, $new_height, $width, $height);
-
-    if ($image_ext == 'jpg' || $image_ext == 'jpeg') {
-      imagejpeg($dst_img, $destination);
-    } elseif ($image_ext == 'png') {
-      imagepng($dst_img, $destination);
-    }
-    imagedestroy($src_img);
-    imagedestroy($dst_img);
-  }
-
-  // Pindahkan file gambar ke folder yang sesuai
   if (move_uploaded_file($tempname, $folder)) {
-    // Resize gambar untuk thumbnail
-    resizeImage($folder, $thumb, 150); // Resize thumbnail menjadi 150px lebar
-
-    // Mendapatkan ukuran gambar
+    // Membuat thumbnail
+    copy($folder, $thumb);
     list($width, $height) = getimagesize($folder);
 
-    // Menyimpan data ke database
+    // Menyimpan informasi gambar ke dalam database
     $stmt = $conn->prepare("INSERT INTO gambar_thumbnail (filepath, thumbpath, width, height, uploaded_at) VALUES (?, ?, ?, ?, NOW())");
     $stmt->bind_param("ssii", $folder, $thumb, $width, $height);
     $stmt->execute();
@@ -96,7 +63,7 @@ $result = $conn->query($sql);
 
 <head>
   <meta charset="UTF-8">
-  <title>Galeri Responsive</title>
+  <title>Galeri Gambar</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
     .thumb {
@@ -145,12 +112,15 @@ $result = $conn->query($sql);
         <?php while ($row = $result->fetch_assoc()): ?>
           <div class="col-md-4 image-card">
             <div class="card h-100">
+              <!-- Thumbnail Gambar -->
               <img src="<?= $row['thumbpath'] ?>" class="card-img-top thumb" data-bs-toggle="modal" data-bs-target="#modal<?= $row['id'] ?>">
               <div class="card-body">
                 <p class="card-text">Ukuran: <?= $row['width'] ?>x<?= $row['height'] ?></p>
               </div>
               <div class="card-footer d-flex justify-content-between">
+                <!-- Tautan untuk melihat gambar asli -->
                 <a href="<?= $row['filepath'] ?>" class="btn btn-sm btn-primary" target="_blank">Lihat Asli</a>
+                <!-- Form untuk menghapus gambar -->
                 <form action="hapus.php" method="POST" onsubmit="return confirm('Yakin ingin menghapus gambar ini?')">
                   <input type="hidden" name="id" value="<?= $row['id'] ?>">
                   <input type="hidden" name="filepath" value="<?= $row['filepath'] ?>">
@@ -161,7 +131,7 @@ $result = $conn->query($sql);
             </div>
           </div>
 
-          <!-- Modal -->
+          <!-- Modal untuk menampilkan gambar asli -->
           <div class="modal fade" id="modal<?= $row['id'] ?>" tabindex="-1">
             <div class="modal-dialog modal-dialog-centered modal-lg">
               <div class="modal-content">
